@@ -197,6 +197,7 @@ func (ctr *container) handleEvent(e *containerd.Event) error {
 			st.State = StateExitProcess
 		}
 		if st.State == StateExit && ctr.restartManager != nil {
+			// Reading: restartManager is container-dependent, here we judge whether we should restart the container
 			restart, wait, err := ctr.restartManager.ShouldRestart(e.Status, false, time.Since(ctr.startedAt))
 			if err != nil {
 				logrus.Warnf("libcontainerd: container %s %v", ctr.containerID, err)

@@ -14,6 +14,7 @@ import (
 	"sync"
 	"syscall"
 	"time"
+	system_runtime "runtime"
 
 	"github.com/Sirupsen/logrus"
 	containerd "github.com/docker/containerd/api/grpc/types"
@@ -26,6 +27,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/grpclog"
 	"google.golang.org/grpc/transport"
+	"bytes"
 )
 
 const (
@@ -114,8 +116,16 @@ func New(stateDir string, options ...RemoteOption) (_ Remote, err error) {
 	}
 	r.restoreFromTimestamp = tsp
 
+	/* Reading:
+	 *  Handle the state changed of grpc connection.
+	 *  For example, if the state of connection is changed to TransientFailure, we should retry until it is recovered or reach to maximum retry count.
+	 */
 	go r.handleConnectionChange()
 
+	/* Reading:
+	 *
+	 *
+	 */
 	if err := r.startEventsMonitor(); err != nil {
 		return nil, err
 	}
@@ -263,7 +273,28 @@ func (r *remote) getLastEventTimestamp() time.Time {
 	return t
 }
 
+/* Reading:
+ *  This function is used to get the id of thread
+ *  It works by parse the runtime debug information, and get pid from it
+ *
+ *  This function is not contained in original source code, I add it manually.
+ */
+func getGID() uint64 {
+	b := make([]byte, 64)
+	b = b[:system_runtime.Stack(b, false)]
+	b = bytes.TrimPrefix(b, []byte("goroutine "))
+	b = b[:bytes.IndexByte(b, ' ')]
+	n, _ := strconv.ParseUint(string(b), 10, 64)
+	return n
+}
+
+/*
+ * Reading:
+ *  Why this method is not run in another thread?
+ *  We just need send start time to
+ */
 func (r *remote) startEventsMonitor() error {
+
 	// First, get past events
 	t := r.getLastEventTimestamp()
 	tsp, err := ptypes.TimestampProto(t)
@@ -273,17 +304,23 @@ func (r *remote) startEventsMonitor() error {
 	er := &containerd.EventsRequest{
 		Timestamp: tsp,
 	}
+
+	// Reading: This method return a server-side stream
 	events, err := r.apiClient.Events(context.Background(), er)
 	if err != nil {
 		return err
 	}
+
+	// Reading: Handle the events stream in another thread, because events is received from server-side stream, and maybe it is infinity.
 	go r.handleEventStream(events)
 	return nil
 }
 
 func (r *remote) handleEventStream(events containerd.API_EventsClient) {
+
 	for {
 		e, err := events.Recv()
+
 		if err != nil {
 			if grpc.ErrorDesc(err) == transport.ErrConnClosing.Desc &&
 				r.closeManually {
@@ -291,6 +328,8 @@ func (r *remote) handleEventStream(events containerd.API_EventsClient) {
 				return
 			}
 			logrus.Errorf("libcontainerd: failed to receive event from containerd: %v", err)
+
+			// Reading: If some errors unexpected occur, then restart a EventsMonitor
 			go r.startEventsMonitor()
 			return
 		}
@@ -301,6 +340,7 @@ func (r *remote) handleEventStream(events containerd.API_EventsClient) {
 		var c *client
 		r.RLock()
 		for _, c = range r.clients {
+			// Reading: get the container by continer_id represents by Id in EventRequest
 			container, err = c.getContainer(e.Id)
 			if err == nil {
 				break
@@ -312,6 +352,7 @@ func (r *remote) handleEventStream(events containerd.API_EventsClient) {
 			continue
 		}
 
+		// Reading: Operate containers by the events received.
 		if err := container.handleEvent(e); err != nil {
 			logrus.Errorf("libcontainerd: error processing state change for %s: %v", e.Id, err)
 		}
@@ -322,6 +363,7 @@ func (r *remote) handleEventStream(events containerd.API_EventsClient) {
 			continue
 		}
 
+		// Reading: update the timestamp in events.ts which record the timestamp of latest events
 		r.updateEventTimestamp(tsp)
 	}
 }

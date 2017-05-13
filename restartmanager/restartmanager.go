@@ -46,11 +46,26 @@ func (rm *restartManager) SetPolicy(policy container.RestartPolicy) {
 	rm.Unlock()
 }
 
+/* Reading:
+ *  Judge whether we should restart the container.
+ *  Parameters:
+ *    exitCode: exit code of container, 0 if successful
+ *    hasBeenManuallyStopped: Is container stop manually? I am not sure
+ *    executionDuration: How long the container has run after it start
+ *
+ */
 func (rm *restartManager) ShouldRestart(exitCode uint32, hasBeenManuallyStopped bool, executionDuration time.Duration) (bool, chan error, error) {
+
+	// Reading: If the RestartPolicy is no, then return false directly.
 	if rm.policy.IsNone() {
 		return false, nil, nil
 	}
+
+	// NoIdea: I don't know why lock here, RestartManager is container-dependent.
+	// NoIdea: Is it used to prevent multiple client start a container simultaneously? I have no idea.
 	rm.Lock()
+
+	// Reading: Prevent that lock isn't released if error.
 	unlockOnExit := true
 	defer func() {
 		if unlockOnExit {
@@ -77,6 +92,8 @@ func (rm *restartManager) ShouldRestart(exitCode uint32, hasBeenManuallyStopped 
 	}
 
 	var restart bool
+
+	// Reading: Decide whether restart by RestartPolicy
 	switch {
 	case rm.policy.IsAlways():
 		restart = true
@@ -85,6 +102,7 @@ func (rm *restartManager) ShouldRestart(exitCode uint32, hasBeenManuallyStopped 
 	case rm.policy.IsOnFailure():
 		// the default value of 0 for MaximumRetryCount means that we will not enforce a maximum count
 		if max := rm.policy.MaximumRetryCount; max == 0 || rm.restartCount < max {
+			// Reading: Container exit successfully if exitCode == 0
 			restart = exitCode != 0
 		}
 	}
@@ -100,6 +118,7 @@ func (rm *restartManager) ShouldRestart(exitCode uint32, hasBeenManuallyStopped 
 	rm.active = true
 	rm.Unlock()
 
+	// NoIdea: What the following lines do?
 	ch := make(chan error)
 	go func() {
 		select {
