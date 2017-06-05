@@ -156,13 +156,17 @@ func getBuiltinDriver(name, home string, options []string, uidMaps, gidMaps []id
 
 // New creates the driver and initializes it at the specified root.
 func New(root string, name string, options []string, uidMaps, gidMaps []idtools.IDMap) (Driver, error) {
+	// Reading: 1 - load build-in driver and plugin driver(only supported on the experimental) if user specific the driver name
 	if name != "" {
 		logrus.Debugf("[graphdriver] trying provided driver %q", name) // so the logs show specified driver
+		// Reading: Lookup the /var/lib/docker/driver_name to find driver
 		return GetDriver(name, root, options, uidMaps, gidMaps)
 	}
 
+	// Reading: 2 - find the previous drivers and load it by priority
 	// Guess for prior driver
 	driversMap := scanPriorDrivers(root)
+
 	for _, name := range priority {
 		if name == "vfs" {
 			// don't use vfs even if there is state present.

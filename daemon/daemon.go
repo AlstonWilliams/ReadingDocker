@@ -119,6 +119,8 @@ func (daemon *Daemon) restore() error {
 
 	for _, v := range dir {
 		id := v.Name()
+
+		// Reading: 1 - load container
 		container, err := daemon.load(id)
 		if !debug && logrus.GetLevel() == logrus.InfoLevel {
 			fmt.Print(".")
@@ -128,8 +130,10 @@ func (daemon *Daemon) restore() error {
 			continue
 		}
 
+		// Reading: 2 - verify the container's driver
 		// Ignore the container if it does not support the current driver being used by the graph
 		if (container.Driver == "" && currentDriver == "aufs") || container.Driver == currentDriver {
+			// Reading: 3 - Load the RWLayer from /var/lib/docker/image/<driver_name>/layerdb/mounts
 			rwlayer, err := daemon.layerStore.GetRWLayer(container.ID)
 			if err != nil {
 				logrus.Errorf("Failed to load container mount %v: %v", id, err)
@@ -138,6 +142,7 @@ func (daemon *Daemon) restore() error {
 			container.RWLayer = rwlayer
 			logrus.Debugf("Loaded container %v", container.ID)
 
+			// Reading: 4 - Add the container to containers array if verify succcessfully
 			containers[container.ID] = container
 		} else {
 			logrus.Debugf("Cannot load container %s because it was created with another graph driver.", container.ID)
@@ -383,13 +388,17 @@ func (daemon *Daemon) IsSwarmCompatible() error {
 // NewDaemon sets up everything for the daemon to be able to service
 // requests from the webserver.
 func NewDaemon(config *Config, registryService registry.Service, containerdRemote libcontainerd.Remote) (daemon *Daemon, err error) {
+	// Reading: 1 - set default mtu if user haven't passed in mtu
 	setDefaultMtu(config)
 
 	// Ensure that we have a correct root key limit for launching containers.
+	// NoIdea: What's usage of root key?
+	// Reading: 2 - modify the root key limit if it is less than 1000000
 	if err := ModifyRootKeyLimit(); err != nil {
 		logrus.Warnf("unable to modify root key limit, number of containers could be limitied by this quota: %v", err)
 	}
 
+	// Reading: 3 - check the config and options passed in by command line is right
 	// Ensure we have compatible and valid configuration options
 	if err := verifyDaemonSettings(config); err != nil {
 		return nil, err
@@ -398,11 +407,13 @@ func NewDaemon(config *Config, registryService registry.Service, containerdRemot
 	// Do we have a disabled network?
 	config.DisableBridge = isBridgeNetworkDisabled(config)
 
+	// Reading: 4 - check whether platform is supported to run docker, focus on windows, linux, macos
 	// Verify the platform is supported as a daemon
 	if !platformSupported {
 		return nil, errSystemNotSupported
 	}
 
+	// Reading: 5 - check others system requirements. For example, whether run by root and the kernel's version
 	// Validate platform-specific requirements
 	if err := checkSystem(); err != nil {
 		return nil, err
@@ -410,12 +421,16 @@ func NewDaemon(config *Config, registryService registry.Service, containerdRemot
 
 	// set up SIGUSR1 handler on Unix-like systems, or a Win32 global event
 	// on Windows to dump Go routine stacks
+	// Reading: 6 - dump stack when receive SIGUSR1
 	setupDumpStackTrap()
 
+	// Reading: 7 - get the uid map and gid map from /etc/sub{uid, gid}
 	uidMaps, gidMaps, err := setupRemappedRoot(config)
 	if err != nil {
 		return nil, err
 	}
+
+	// Reading: 8 - get the uid and gid from uid maps and gid maps. return root if they are null
 	rootUID, rootGID, err := idtools.GetRootUIDGID(uidMaps, gidMaps)
 	if err != nil {
 		return nil, err
@@ -432,15 +447,18 @@ func NewDaemon(config *Config, registryService registry.Service, containerdRemot
 		}
 	}
 
+	// Reading: 9 - Create daemon root directory and set permission
 	if err := setupDaemonRoot(config, realRoot, rootUID, rootGID); err != nil {
 		return nil, err
 	}
 
+	// Reading: 10 - Set oom-score-adjust for unix
 	if err := setupDaemonProcess(config); err != nil {
 		return nil, err
 	}
 
 	// set up the tmpDir to use a canonical path
+	// Reading: 11 - Create temporary directory and set permission
 	tmp, err := tempDir(config.Root, rootUID, rootGID)
 	if err != nil {
 		return nil, fmt.Errorf("Unable to get the TempDir under %s: %s", config.Root, err)
@@ -449,8 +467,10 @@ func NewDaemon(config *Config, registryService registry.Service, containerdRemot
 	if err != nil {
 		return nil, fmt.Errorf("Unable to get the full path to the TempDir (%s): %s", tmp, err)
 	}
+	// Reading: 11 - Set TMPDIR environment variable
 	os.Setenv("TMPDIR", realTmp)
 
+	// Reading: 12 - Initialize a daemon object
 	d := &Daemon{configStore: config}
 	// Ensure the daemon is properly shutdown if there is a failure during
 	// initialization
@@ -469,11 +489,16 @@ func NewDaemon(config *Config, registryService registry.Service, containerdRemot
 
 	logrus.Debugf("Using default logging driver %s", config.LogConfig.Type)
 
+	// Reading: 13 - make docker can use 90% of the maximum thread
 	if err := configureMaxThreads(config); err != nil {
 		logrus.Warnf("Failed to configure golang's threads limit: %v", err)
 	}
 
+	// Reading: 14 - create the apparmor profile for docker and install it into kernel
 	installDefaultAppArmorProfile()
+
+
+	// Reading: 15 - create the /var/lib/docker/containers directory
 	daemonRepo := filepath.Join(config.Root, "containers")
 	if err := idtools.MkdirAllAs(daemonRepo, 0700, rootUID, rootGID); err != nil && !os.IsExist(err) {
 		return nil, err
@@ -483,6 +508,8 @@ func NewDaemon(config *Config, registryService registry.Service, containerdRemot
 	if driverName == "" {
 		driverName = config.GraphDriver
 	}
+
+	// Reading: 16 - Initialize the store for layer, remember that image is consisted of layer
 	d.layerStore, err = layer.NewStoreFromOptions(layer.StoreOptions{
 		StorePath:                 config.Root,
 		MetadataStorePathTemplate: filepath.Join(config.Root, "image", "%s", "layerdb"),
@@ -496,61 +523,90 @@ func NewDaemon(config *Config, registryService registry.Service, containerdRemot
 	}
 
 	graphDriver := d.layerStore.DriverName()
+
 	imageRoot := filepath.Join(config.Root, "image", graphDriver)
 
 	// Configure and validate the kernels security support
+	// Reading: 17 - enable SELinux
 	if err := configureKernelSecuritySupport(config, graphDriver); err != nil {
 		return nil, err
 	}
 
+	// Reading: 18 - Initialize LayerDownloadManager and LayerUploadManger which is used to download layer and upload layer respectively
 	logrus.Debugf("Max Concurrent Downloads: %d", *config.MaxConcurrentDownloads)
 	d.downloadManager = xfer.NewLayerDownloadManager(d.layerStore, *config.MaxConcurrentDownloads)
 	logrus.Debugf("Max Concurrent Uploads: %d", *config.MaxConcurrentUploads)
 	d.uploadManager = xfer.NewLayerUploadManager(*config.MaxConcurrentUploads)
 
+	// Reading: 19 - Initialize image FSStore backend
 	ifs, err := image.NewFSStoreBackend(filepath.Join(imageRoot, "imagedb"))
 	if err != nil {
 		return nil, err
 	}
 
+	// Reading: 20 - Initialize imageStore
 	d.imageStore, err = image.NewImageStore(ifs, d.layerStore)
 	if err != nil {
 		return nil, err
 	}
 
-	// Configure the volumes driver
+	// Reading: 21 - Configure the volumes driver
 	volStore, err := d.configureVolumes(rootUID, rootGID)
 	if err != nil {
 		return nil, err
 	}
 
+	// Reading: 22 - Load the private key
 	trustKey, err := api.LoadOrCreateTrustKey(config.TrustKeyPath)
 	if err != nil {
 		return nil, err
 	}
 
+	// Reading: 23 - Create trust if it doesn't exist
 	trustDir := filepath.Join(config.Root, "trust")
 
 	if err := system.MkdirAll(trustDir, 0700); err != nil {
 		return nil, err
 	}
 
+	// Reading: 24 - Create a FSMetadataStore which is used to associate metadata of layer with image IDs
+
+
+	/* Reading:
+	 *
+	 *	LayerMetadataStore just saves layers's metadata, data like image id is missing
+	 *	So we need a FSMetadataStore to associate metadata of layer with imageID.
+	 */
+
 	distributionMetadataStore, err := dmetadata.NewFSMetadataStore(filepath.Join(imageRoot, "distribution"))
 	if err != nil {
 		return nil, err
 	}
 
+	// Reading: 25 - Initialize event handler which includes the events and event publisher
 	eventsService := events.New()
+
+
+	// Reading: 26 - Initialize ReferenceStore
+
+	/* Reading:
+	 *
+	 *	ImageMetadataStore just saves images' metadata, data like image name is missing
+	 *	So we need a ReferenceStore to associate metadata of image with image name.
+	 */
 
 	referenceStore, err := reference.NewReferenceStore(filepath.Join(imageRoot, "repositories.json"))
 	if err != nil {
 		return nil, fmt.Errorf("Couldn't create Tag store repositories: %s", err)
 	}
 
+
+	// Reading: 27 - Create custom image, just available on the windows.
 	if err := restoreCustomImage(d.imageStore, d.layerStore, referenceStore); err != nil {
 		return nil, fmt.Errorf("Couldn't restore custom images: %s", err)
 	}
 
+	// Reading: 28 - Migrate from older docker to 1.10
 	migrationStart := time.Now()
 	if err := v1.Migrate(config.Root, graphDriver, d.layerStore, d.imageStore, referenceStore, distributionMetadataStore); err != nil {
 		logrus.Errorf("Graph migration failed: %q. Your old graph data was found to be too inconsistent for upgrading to content-addressable storage. Some of the old data was probably not upgraded. We recommend starting over with a clean storage directory if possible.", err)
@@ -559,10 +615,12 @@ func NewDaemon(config *Config, registryService registry.Service, containerdRemot
 
 	// Discovery is only enabled when the daemon is launched with an address to advertise.  When
 	// initialized, the daemon is registered and we can store the discovery backend as its read-only
+	// Reading: 29 - Connect to the cluster
 	if err := d.initDiscovery(config); err != nil {
 		return nil, err
 	}
 
+	// Reading: 30 - check features like cgroups, Apparmor is supported by kernel
 	sysInfo := sysinfo.New(false)
 	// Check if Devices cgroup is mounted, it is hard requirement for container security,
 	// on Linux.
@@ -577,7 +635,9 @@ func NewDaemon(config *Config, registryService registry.Service, containerdRemot
 	d.referenceStore = referenceStore
 	d.distributionMetadataStore = distributionMetadataStore
 	d.trustKey = trustKey
+	// Reading: TruncIndex is used to retrieve image and container by short prefix
 	d.idIndex = truncindex.NewTruncIndex([]string{})
+	// Reading: 31 - Initialize a new statsCollector which is used to collect network and cgroup stats for a registed container
 	d.statsCollector = d.newStatsCollector(1 * time.Second)
 	d.defaultLogConfig = containertypes.LogConfig{
 		Type:   config.LogConfig.Type,
@@ -591,10 +651,14 @@ func NewDaemon(config *Config, registryService registry.Service, containerdRemot
 	d.gidMaps = gidMaps
 	d.seccompEnabled = sysInfo.Seccomp
 
+	// Reading: 32 - Initialize a new Registrar which stores indexes a list of keys and their registered names
 	d.nameIndex = registrar.NewRegistrar()
+
+	// Reading: 32 - Create a new LinkIndex which is used to map parent to child
 	d.linkIndex = newLinkIndex()
 	d.containerdRemote = containerdRemote
 
+	// Reading: 33 - Start GC thread
 	go d.execCommandGC()
 
 	d.containerd, err = containerdRemote.Client(d)

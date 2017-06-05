@@ -83,12 +83,15 @@ func InstallDefault(name string) error {
 	if err != nil {
 		return err
 	}
+
+	// Reading: Generate the content of /etc/apparmor.d/docker and write to it
 	if err := p.generateDefault(f); err != nil {
 		f.Close()
 		return err
 	}
 	f.Close()
 
+	// Reading: Run apparmor_parser command to write apparmor profile to kernel
 	if err := aaparser.LoadProfile(defaultProfilePath); err != nil {
 		return err
 	}

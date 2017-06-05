@@ -31,12 +31,14 @@ func Trap(cleanup func()) {
 		interruptCount := uint32(0)
 		for sig := range c {
 			if sig == syscall.SIGPIPE {
+				// Reading: Ignore SIGPIPE
 				continue
 			}
 
 			go func(sig os.Signal) {
 				logrus.Infof("Processing signal '%v'", sig)
 				switch sig {
+				// Reading: SIGTERM is the normal way to politely ask a program to terminate. The shell command kill generates SIGTERM by default.
 				case os.Interrupt, syscall.SIGTERM:
 					if atomic.LoadUint32(&interruptCount) < 3 {
 						// Initiate the cleanup only once
@@ -48,6 +50,7 @@ func Trap(cleanup func()) {
 							return
 						}
 					} else {
+						// Reading: Is it possible to be called? Doesn't it will be cleanup when receive os.Interrupt, syscall.SIGTERM firstly?
 						// 3 SIGTERM/INT signals received; force exit without cleanup
 						logrus.Info("Forcing docker daemon shutdown without cleanup; 3 interrupts received")
 					}
@@ -62,6 +65,7 @@ func Trap(cleanup func()) {
 	}()
 }
 
+// Reading: Just write the stack to command line
 // DumpStacks dumps the runtime stack.
 func DumpStacks() {
 	var (

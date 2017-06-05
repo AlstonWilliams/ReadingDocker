@@ -72,8 +72,11 @@ func (daemon *Daemon) containerRoot(id string) string {
 // Load reads the contents of a container from disk
 // This is typically done at startup.
 func (daemon *Daemon) load(id string) (*container.Container, error) {
+	// Reading: 1 - Create a new base container
 	container := daemon.newBaseContainer(id)
 
+
+	// Reading: 2 - Load the config file in the disk
 	if err := container.FromDisk(); err != nil {
 		return nil, err
 	}

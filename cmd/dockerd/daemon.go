@@ -251,17 +251,22 @@ func (cli *DaemonCli) start() (err error) {
 	}
 	cli.TrustKeyPath = cli.commonFlags.TrustKey
 
+	// Reading: Get a registry service instance
 	registryService := registry.NewService(cli.Config.ServiceOptions)
+	// Reading: Get a instance of containerd
 	containerdRemote, err := libcontainerd.New(cli.getLibcontainerdRoot(), cli.getPlatformRemoteOptions()...)
 	if err != nil {
 		return err
 	}
 	cli.api = api
+	// Reading: Handle the os.Interrupt, syscall.SIGTERM, syscall.SIGQUIT, syscall.SIGPIPE
 	signal.Trap(func() {
 		cli.stop()
+		// Reading: stopc will be closed when daemonCli.start() finished.
 		<-stopc // wait for daemonCli.start() to return
 	})
 
+	// Reading:
 	d, err := daemon.NewDaemon(cli.Config, registryService, containerdRemote)
 	if err != nil {
 		return fmt.Errorf("Error starting daemon: %v", err)

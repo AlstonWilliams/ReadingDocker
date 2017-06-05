@@ -176,6 +176,7 @@ func (ctr *container) newProcess(friendlyName string) *process {
 	}
 }
 
+// Reading: Just handle the events about stop, exit, resume, oom. Doesn't handle the events like start, restart
 func (ctr *container) handleEvent(e *containerd.Event) error {
 	ctr.client.lock(ctr.containerID)
 	defer ctr.client.unlock(ctr.containerID)

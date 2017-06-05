@@ -73,12 +73,15 @@ func New(stateDir string, options ...RemoteOption) (_ Remote, err error) {
 		daemonPid:   -1,
 		eventTsPath: filepath.Join(stateDir, eventTimestampFilename),
 	}
+
+	// Reading: 1 - Initialize variable r
 	for _, option := range options {
 		if err := option.Apply(r); err != nil {
 			return nil, err
 		}
 	}
 
+	// Reading: 2 - create all directories which store temp running files
 	if err := sysinfo.MkdirAll(stateDir, 0700); err != nil {
 		return nil, err
 	}
@@ -87,6 +90,7 @@ func New(stateDir string, options ...RemoteOption) (_ Remote, err error) {
 		r.rpcAddr = filepath.Join(stateDir, containerdSockFilename)
 	}
 
+	// Reading: 3 - run containerd daemon if it is not running
 	if r.startDaemon {
 		if err := r.runContainerdDaemon(); err != nil {
 			return nil, err
@@ -95,6 +99,9 @@ func New(stateDir string, options ...RemoteOption) (_ Remote, err error) {
 
 	// don't output the grpc reconnect logging
 	grpclog.SetLogger(log.New(ioutil.Discard, "", log.LstdFlags))
+
+
+	// Reading: 4 - Get the grpc connection for containerd
 	dialOpts := append([]grpc.DialOption{grpc.WithInsecure()},
 		grpc.WithDialer(func(addr string, timeout time.Duration) (net.Conn, error) {
 			return net.DialTimeout("unix", addr, timeout)
@@ -116,14 +123,15 @@ func New(stateDir string, options ...RemoteOption) (_ Remote, err error) {
 	}
 	r.restoreFromTimestamp = tsp
 
-	/* Reading:
+	/* Reading: 6 -
 	 *  Handle the state changed of grpc connection.
 	 *  For example, if the state of connection is changed to TransientFailure, we should retry until it is recovered or reach to maximum retry count.
 	 */
 	go r.handleConnectionChange()
 
-	/* Reading:
+	/* Reading: 7 -
 	 *
+	 *  Monitor the events occurs
 	 *
 	 */
 	if err := r.startEventsMonitor(); err != nil {
@@ -352,7 +360,7 @@ func (r *remote) handleEventStream(events containerd.API_EventsClient) {
 			continue
 		}
 
-		// Reading: Operate containers by the events received.
+		// Reading: Make containers handle events received.
 		if err := container.handleEvent(e); err != nil {
 			logrus.Errorf("libcontainerd: error processing state change for %s: %v", e.Id, err)
 		}

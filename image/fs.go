@@ -42,6 +42,7 @@ func NewFSStoreBackend(root string) (StoreBackend, error) {
 	return newFSStore(root)
 }
 
+// Reading: Create folder for /var/lib/docker/image/aufs/imagedb
 func newFSStore(root string) (*fs, error) {
 	s := &fs{
 		root: root,

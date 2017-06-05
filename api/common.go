@@ -129,11 +129,17 @@ func MatchesContentType(contentType, expectedType string) bool {
 // LoadOrCreateTrustKey attempts to load the libtrust key at the given path,
 // otherwise generates a new one
 func LoadOrCreateTrustKey(trustKeyPath string) (libtrust.PrivateKey, error) {
+
+	// Reading: 1 - Create key file folder
 	err := system.MkdirAll(filepath.Dir(trustKeyPath), 0700)
 	if err != nil {
 		return nil, err
 	}
+
+	// Reading: 2 - Load key from key file
 	trustKey, err := libtrust.LoadKeyFile(trustKeyPath)
+
+	// Reading: 3 - Generate private key if key file doesn't exist
 	if err == libtrust.ErrKeyFileDoesNotExist {
 		trustKey, err = libtrust.GenerateECP256PrivateKey()
 		if err != nil {

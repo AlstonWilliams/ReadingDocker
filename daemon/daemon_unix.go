@@ -196,6 +196,7 @@ func getBlkioThrottleDevices(devs []*blkiodev.ThrottleDevice) ([]specs.ThrottleD
 	return throttleDevices, nil
 }
 
+// Reading: Check whether kernel version is supported
 func checkKernelVersion(k, major, minor int) bool {
 	if v, err := kernel.GetKernelVersion(); err != nil {
 		logrus.Warnf("error getting kernel version: %s", err)
@@ -443,6 +444,7 @@ func (daemon *Daemon) getCgroupDriver() string {
 func getCD(config *Config) string {
 	for _, option := range config.ExecOptions {
 		key, val, err := parsers.ParseKeyValueOpt(option)
+		// Reading: strings.EqualFold() can check if two strings are equal, while ignoring case. It even works with Unicode
 		if err != nil || !strings.EqualFold(key, "native.cgroupdriver") {
 			continue
 		}
@@ -590,9 +592,11 @@ func verifyDaemonSettings(config *Config) error {
 
 // checkSystem validates platform-specific requirements
 func checkSystem() error {
+	// Reading: Check whether docker is run by root
 	if os.Geteuid() != 0 {
 		return fmt.Errorf("The Docker daemon needs to be run as root")
 	}
+	// Reading: Check kernel's version
 	return checkKernel()
 }
 
@@ -953,6 +957,7 @@ func parseRemappedRoot(usergrp string) (string, string, error) {
 	return username, groupname, nil
 }
 
+// Reading:get the uidmap and gidmap from options or config file
 func setupRemappedRoot(config *Config) ([]idtools.IDMap, []idtools.IDMap, error) {
 	if runtime.GOOS != "linux" && config.RemappedRoot != "" {
 		return nil, nil, fmt.Errorf("User namespaces are only supported on Linux")

@@ -67,6 +67,8 @@ func Migrate(root, driverName string, ls layer.Store, is image.Store, rs referen
 		return err
 	}
 
+	// Reading: See golang type assert for detail
+	// Reading: Call CalculateLayerChecksum if ls has implements checksumCalculator interface
 	if cc, ok := ls.(checksumCalculator); ok {
 		CalculateLayerChecksums(root, cc, mappings)
 	}
@@ -101,8 +103,10 @@ func CalculateLayerChecksums(root string, ls checksumCalculator, mappings map[st
 	graphDir := filepath.Join(root, graphDirName)
 	// spawn some extra workers also for maximum performance because the process is bounded by both cpu and io
 	workers := runtime.NumCPU() * 3
+	// Reading: Initialize channel with capacity cpu's number * 3
 	workQueue := make(chan string, workers)
 
+	// Reading: A WaitGroup waits for a collection of goroutines to finish. The main goroutine calls Add to set the number of goroutines to wait for. Then each of the goroutines runs and calls Done when finished. At the same time, Wait can be used to block until all goroutines have finished.
 	wg := sync.WaitGroup{}
 
 	for i := 0; i < workers; i++ {
@@ -136,6 +140,7 @@ func CalculateLayerChecksums(root string, ls checksumCalculator, mappings map[st
 		workQueue <- v1ID
 	}
 	close(workQueue)
+	// Reading: Like join() function in Java
 	wg.Wait()
 }
 

@@ -56,6 +56,7 @@ func ensureMountedAs(mountPoint, options string) error {
 		return err
 	}
 
+	// Reading: Mount if un-mount
 	if !mounted {
 		if err := Mount(mountPoint, mountPoint, "none", "bind,rw"); err != nil {
 			return err

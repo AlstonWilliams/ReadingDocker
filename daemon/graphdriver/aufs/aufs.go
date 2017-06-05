@@ -80,18 +80,24 @@ type Driver struct {
 func Init(root string, options []string, uidMaps, gidMaps []idtools.IDMap) (graphdriver.Driver, error) {
 
 	// Try to load the aufs kernel module
+	// Reading: 1 - Check whether system support aufs
 	if err := supportsAufs(); err != nil {
 		return nil, graphdriver.ErrNotSupported
 	}
 
+	// Reading: 2 - Get the id of filesystem
 	fsMagic, err := graphdriver.GetFSMagic(root)
 	if err != nil {
 		return nil, err
 	}
+	// Reading: 3 - Get the filesystem name by filesystem id
+	// Reading: We can get the filesystem name in GetFsMagic method, why here get by id?
 	if fsName, ok := graphdriver.FsNames[fsMagic]; ok {
+		// Reading: backingFs represents the filesystem of host
 		backingFs = fsName
 	}
 
+	// Reading: 4 - aufs can't overlay in the Aufs, Btrfs, Ecryptfs
 	switch fsMagic {
 	case graphdriver.FsMagicAufs, graphdriver.FsMagicBtrfs, graphdriver.FsMagicEcryptfs:
 		logrus.Errorf("AUFS is not supported over %s", backingFs)
@@ -104,6 +110,7 @@ func Init(root string, options []string, uidMaps, gidMaps []idtools.IDMap) (grap
 		"layers",
 	}
 
+	// Reading: 5 - Initialize the Driver
 	a := &Driver{
 		root:      root,
 		uidMaps:   uidMaps,
@@ -116,6 +123,8 @@ func Init(root string, options []string, uidMaps, gidMaps []idtools.IDMap) (grap
 	if err != nil {
 		return nil, err
 	}
+
+	// Reading: 6 - Create /var/lib/docker/aufs if it doesn't exist
 	// Create the root aufs driver dir and return
 	// if it already exists
 	// If not populate the dir structure
@@ -126,10 +135,14 @@ func Init(root string, options []string, uidMaps, gidMaps []idtools.IDMap) (grap
 		return nil, err
 	}
 
+	// Reading: 7 - Mount the driver directory, see /proc/self/mountinfo for detail
 	if err := mountpk.MakePrivate(root); err != nil {
 		return nil, err
 	}
 
+
+
+	// Reading: 8 - Create driver's folder structure
 	// Populate the dir structure
 	for _, p := range paths {
 		if err := idtools.MkdirAllAs(path.Join(root, p), 0700, rootUID, rootGID); err != nil {
@@ -151,6 +164,7 @@ func supportsAufs() error {
 		return ErrAufsNested
 	}
 
+	// Reading: Check whether aufs is supported by check whether aufs is included in /proc/filesystem
 	f, err := os.Open("/proc/filesystems")
 	if err != nil {
 		return err

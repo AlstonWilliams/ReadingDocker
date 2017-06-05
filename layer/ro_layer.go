@@ -9,7 +9,9 @@ import (
 )
 
 type roLayer struct {
+	// Reading: ID for a layer and its parents. This ID uniquely identifies a filesystem composed of a set of layers
 	chainID    ChainID
+	// Reading: ID for an individual layer
 	diffID     DiffID
 	parent     *roLayer
 	cacheID    string

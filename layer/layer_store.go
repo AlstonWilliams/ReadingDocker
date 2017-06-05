@@ -48,6 +48,12 @@ type StoreOptions struct {
 
 // NewStoreFromOptions creates a new Store instance
 func NewStoreFromOptions(options StoreOptions) (Store, error) {
+	/* Reading:
+	 *  We have import docker/daemon/graphdriver at the top
+	 *  So the init function of driver will be called automatically
+	 */
+
+	// Reading: 1 - Get the responsible driver
 	driver, err := graphdriver.New(
 		options.StorePath,
 		options.GraphDriver,
@@ -59,6 +65,7 @@ func NewStoreFromOptions(options StoreOptions) (Store, error) {
 	}
 	logrus.Debugf("Using graph driver %s", driver)
 
+	// Reading: 2 - Initialize FS Metadata store instance
 	fms, err := NewFSMetadataStore(fmt.Sprintf(options.MetadataStorePathTemplate, driver))
 	if err != nil {
 		return nil, err
@@ -71,6 +78,8 @@ func NewStoreFromOptions(options StoreOptions) (Store, error) {
 // metadata store and graph driver. The metadata store will be used to restore
 // the Store.
 func NewStoreFromGraphDriver(store MetadataStore, driver graphdriver.Driver) (Store, error) {
+
+	// Reading: 1 - Initialize layerStore
 	ls := &layerStore{
 		store:    store,
 		driver:   driver,
@@ -78,11 +87,13 @@ func NewStoreFromGraphDriver(store MetadataStore, driver graphdriver.Driver) (St
 		mounts:   map[string]*mountedLayer{},
 	}
 
+	// Reading: 2 - Get the layers and mounts from MetadataStore
 	ids, mounts, err := store.List()
 	if err != nil {
 		return nil, err
 	}
 
+	// Reading: 3 - Initialize layer object
 	for _, id := range ids {
 		l, err := ls.loadLayer(id)
 		if err != nil {
@@ -94,6 +105,7 @@ func NewStoreFromGraphDriver(store MetadataStore, driver graphdriver.Driver) (St
 		}
 	}
 
+	// Reading: 4 - Initialize mount(Actually, I even don't know what is mount, maybe it is relative to container, I have viewed that each container has one)
 	for _, mount := range mounts {
 		if err := ls.loadMount(mount); err != nil {
 			logrus.Debugf("Failed to load mount %s: %s", mount, err)
@@ -103,12 +115,20 @@ func NewStoreFromGraphDriver(store MetadataStore, driver graphdriver.Driver) (St
 	return ls, nil
 }
 
+// Reading: Load the layer by read the data in layer's folder
+/* Reading:
+ *  For example, we have a layer located in /var/lib/docker/image/aufs/layerdb/sha256/0132aeca1bc9ac49d397635d34675915693a8727b103639ddee3cc5438e0f60a
+ *  And the layer's metadata is stored in this folder
+ *  So you will find files like cache-id, diff, parent, size in this folder
+ */
 func (ls *layerStore) loadLayer(layer ChainID) (*roLayer, error) {
+	// Reading: 1 - Return the roLayer if it has been read
 	cl, ok := ls.layerMap[layer]
 	if ok {
 		return cl, nil
 	}
 
+	// Reading: 2 - Else read the metadata of layer
 	diff, err := ls.store.GetDiffID(layer)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get diff id for %s: %s", layer, err)
@@ -134,6 +154,7 @@ func (ls *layerStore) loadLayer(layer ChainID) (*roLayer, error) {
 		return nil, fmt.Errorf("failed to get descriptor for %s: %s", layer, err)
 	}
 
+	// Reading: 3 - Initialize the roLayer object by attribute
 	cl = &roLayer{
 		chainID:    layer,
 		diffID:     diff,
@@ -144,6 +165,7 @@ func (ls *layerStore) loadLayer(layer ChainID) (*roLayer, error) {
 		descriptor: descriptor,
 	}
 
+	// Reading: 4 - Load parent layer
 	if parent != "" {
 		p, err := ls.loadLayer(parent)
 		if err != nil {
@@ -152,6 +174,7 @@ func (ls *layerStore) loadLayer(layer ChainID) (*roLayer, error) {
 		cl.parent = p
 	}
 
+	// Reading: 5 - Write layer to map
 	ls.layerMap[cl.chainID] = cl
 
 	return cl, nil

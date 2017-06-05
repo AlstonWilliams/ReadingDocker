@@ -87,9 +87,12 @@ var (
 // GetFSMagic returns the filesystem id given the path.
 func GetFSMagic(rootpath string) (FsMagic, error) {
 	var buf syscall.Statfs_t
+	// Reading: Call the statfs system call to get the information about the mounted file system
+	// Reading: the first parameter of Statfs in syscall is the pathname of any file within the mounted filesystem
 	if err := syscall.Statfs(filepath.Dir(rootpath), &buf); err != nil {
 		return 0, err
 	}
+
 	return FsMagic(buf.Type), nil
 }
 

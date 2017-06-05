@@ -45,6 +45,7 @@ func LoadKeyFile(filename string) (PrivateKey, error) {
 	var key PrivateKey
 
 	if strings.HasSuffix(filename, ".json") || strings.HasSuffix(filename, ".jwk") {
+		// Reading: Parsing the content of file to private key
 		key, err = UnmarshalPrivateKeyJWK(contents)
 		if err != nil {
 			return nil, fmt.Errorf("unable to decode private key JWK: %s", err)

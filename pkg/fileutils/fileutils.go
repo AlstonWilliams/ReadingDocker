@@ -243,6 +243,7 @@ func CopyFile(src, dst string) (int64, error) {
 
 // ReadSymlinkedDirectory returns the target directory of a symlink.
 // The target of the symbolic link may not be a file.
+// Reading: Convert symbolic link to absolute path
 func ReadSymlinkedDirectory(path string) (string, error) {
 	var realPath string
 	var err error

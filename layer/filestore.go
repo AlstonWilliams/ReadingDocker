@@ -307,6 +307,7 @@ func (fms *fileMetadataStore) GetMountParent(mount string) (ChainID, error) {
 func (fms *fileMetadataStore) List() ([]ChainID, []string, error) {
 	var ids []ChainID
 	for _, algorithm := range supportedAlgorithms {
+
 		fileInfos, err := ioutil.ReadDir(filepath.Join(fms.root, string(algorithm)))
 		if err != nil {
 			if os.IsNotExist(err) {
@@ -317,6 +318,7 @@ func (fms *fileMetadataStore) List() ([]ChainID, []string, error) {
 
 		for _, fi := range fileInfos {
 			if fi.IsDir() && fi.Name() != "mounts" {
+				// Reading: splice string(algorithm) and fi.Name
 				dgst := digest.NewDigestFromHex(string(algorithm), fi.Name())
 				if err := dgst.Validate(); err != nil {
 					logrus.Debugf("Ignoring invalid digest %s:%s", algorithm, fi.Name())
