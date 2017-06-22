@@ -74,7 +74,7 @@ func New(stateDir string, options ...RemoteOption) (_ Remote, err error) {
 		eventTsPath: filepath.Join(stateDir, eventTimestampFilename),
 	}
 
-	// Reading: 1 - Initialize variable r
+	// Reading: 1 - Initialize remote which represents the interactive between docker daemon and libcontainerd
 	for _, option := range options {
 		if err := option.Apply(r); err != nil {
 			return nil, err
@@ -215,6 +215,7 @@ func (r *remote) Cleanup() {
 }
 
 func (r *remote) Client(b Backend) (Client, error) {
+
 	c := &client{
 		clientCommon: clientCommon{
 			backend:    b,

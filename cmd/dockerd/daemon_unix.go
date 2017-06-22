@@ -50,6 +50,8 @@ func getDaemonConfDir() string {
 // setupConfigReloadTrap configures the USR2 signal to reload the configuration.
 func (cli *DaemonCli) setupConfigReloadTrap() {
 	c := make(chan os.Signal, 1)
+	// Reading: SIGHUP is used when terminal associates with process is closed from Wikipedia. But this signal is used to reload config file?
+	// Reading: Look <url>https://stackoverflow.com/questions/19052354/sighup-for-reloading-configuration</url> for detail
 	signal.Notify(c, syscall.SIGHUP)
 	go func() {
 		for range c {

@@ -11,6 +11,8 @@ import (
 
 // linkIndex stores link relationships between containers, including their specified alias
 // The alias is the name the parent uses to reference the child
+// Reading: Child container is the container referred by --link option when start the container
+// Reading: Parent container is the container you are running
 type linkIndex struct {
 	// idx maps a parent->alias->child relationship
 	idx map[*container.Container]map[string]*container.Container

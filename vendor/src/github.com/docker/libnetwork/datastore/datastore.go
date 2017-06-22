@@ -233,6 +233,7 @@ func newClient(scope string, kv string, addr string, config *store.Config, cache
 
 // NewDataStore creates a new instance of LibKV data store
 func NewDataStore(scope string, cfg *ScopeCfg) (DataStore, error) {
+	// Reading: Use default scopes if no scope provider or client address is provided
 	if cfg == nil || cfg.Client.Provider == "" || cfg.Client.Address == "" {
 		c, ok := defaultScopes[scope]
 		if !ok || c.Client.Provider == "" || c.Client.Address == "" {
@@ -242,6 +243,7 @@ func NewDataStore(scope string, cfg *ScopeCfg) (DataStore, error) {
 		cfg = c
 	}
 
+	// Reading: Cache if localscope
 	var cached bool
 	if scope == LocalScope {
 		cached = true

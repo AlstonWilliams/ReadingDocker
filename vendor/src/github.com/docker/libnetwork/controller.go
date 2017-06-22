@@ -164,6 +164,7 @@ type initializer struct {
 
 // New creates a new instance of network controller.
 func New(cfgOptions ...config.Option) (NetworkController, error) {
+	// Reading: 1 - Parse the configuration and initialize the NetworkController
 	c := &controller{
 		id:              stringid.GenerateRandomID(),
 		cfg:             config.ParseConfigOptions(cfgOptions...),
@@ -178,11 +179,13 @@ func New(cfgOptions ...config.Option) (NetworkController, error) {
 		return nil, err
 	}
 
+	// Reading: Initialize driver registry
 	drvRegistry, err := drvregistry.New(c.getStore(datastore.LocalScope), c.getStore(datastore.GlobalScope), c.RegisterDriver, nil)
 	if err != nil {
 		return nil, err
 	}
 
+	// Reading: Get all initializers of drviers
 	for _, i := range getInitializers() {
 		var dcfg map[string]interface{}
 
@@ -197,6 +200,7 @@ func New(cfgOptions ...config.Option) (NetworkController, error) {
 		}
 	}
 
+	// Reading: Initialize IPAM driver, see **https://en.wikipedia.org/wiki/IP_address_management** for more detail about IPAM
 	if err = initIPAMDrivers(drvRegistry, nil, c.getStore(datastore.GlobalScope)); err != nil {
 		return nil, err
 	}

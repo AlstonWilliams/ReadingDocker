@@ -78,6 +78,7 @@ func ParseConfigOptions(cfgOptions ...Option) *Config {
 	}
 
 	cfg.ProcessOptions(cfgOptions...)
+	// Reading: just load local scope
 	cfg.LoadDefaultScopes(cfg.Daemon.DataDir)
 
 	return cfg

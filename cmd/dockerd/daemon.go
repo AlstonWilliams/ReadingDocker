@@ -138,35 +138,44 @@ func (cli *DaemonCli) start() (err error) {
 	if cli.commonFlags.TrustKey == "" {
 		cli.commonFlags.TrustKey = filepath.Join(getDaemonConfDir(), cliflags.DefaultTrustKeyFile)
 	}
+
+	// Reading: 1 - Load the client config, stored in user_home/.docker/config.json
 	cliConfig, err := loadDaemonCliConfig(cli.Config, flags, cli.commonFlags, *cli.configFile)
 	if err != nil {
 		return err
 	}
 	cli.Config = cliConfig
 
+	// Reading: 2 - Run in debug mode if debug
 	if cli.Config.Debug {
 		utils.EnableDebug()
 	}
 
+
+	// Reading: 3 - Run in experimental, some features like plugin are just supported in experimental version
 	if utils.ExperimentalBuild() {
 		logrus.Warn("Running experimental build")
 	}
 
+	// Reading: 4 - Initialize log configuration
 	logrus.SetFormatter(&logrus.TextFormatter{
 		TimestampFormat: jsonlog.RFC3339NanoFixed,
 		DisableColors:   cli.Config.RawLogs,
 	})
 
+	// Reading: 5 - Set umask which is used to set permission when create file
 	if err := setDefaultUmask(); err != nil {
 		return fmt.Errorf("Failed to set umask: %v", err)
 	}
 
+	// Reading: 6 - Validate log options
 	if len(cli.LogConfig.Config) > 0 {
 		if err := logger.ValidateLogOpts(cli.LogConfig.Type, cli.LogConfig.Config); err != nil {
 			return fmt.Errorf("Failed to set log opts: %v", err)
 		}
 	}
 
+	// Reading: 7 - Create pid file for docker
 	if cli.Pidfile != "" {
 		pf, err := pidfile.New(cli.Pidfile)
 		if err != nil {
@@ -179,6 +188,7 @@ func (cli *DaemonCli) start() (err error) {
 		}()
 	}
 
+	// Reading: 8 - Initialize apiserver which is used to server restful api for docker client
 	serverConfig := &apiserver.Config{
 		Logging:     true,
 		SocketGroup: cli.Config.SocketGroup,
@@ -187,6 +197,7 @@ func (cli *DaemonCli) start() (err error) {
 		CorsHeaders: cli.Config.CorsHeaders,
 	}
 
+	// Reading: 9 - Initialize tls config
 	if cli.Config.TLS {
 		tlsOptions := tlsconfig.Options{
 			CAFile:   cli.Config.CommonTLSOptions.CAFile,
@@ -212,6 +223,7 @@ func (cli *DaemonCli) start() (err error) {
 	api := apiserver.New(serverConfig)
 	cli.api = api
 
+	// Reading: 10 - Parse host config
 	for i := 0; i < len(cli.Config.Hosts); i++ {
 		var err error
 		if cli.Config.Hosts[i], err = opts.ParseHost(cli.Config.TLS, cli.Config.Hosts[i]); err != nil {
@@ -251,22 +263,25 @@ func (cli *DaemonCli) start() (err error) {
 	}
 	cli.TrustKeyPath = cli.commonFlags.TrustKey
 
+	// Reading: 11 - Initialize registry instance
 	// Reading: Get a registry service instance
 	registryService := registry.NewService(cli.Config.ServiceOptions)
 	// Reading: Get a instance of containerd
+
+	// Reading: 12 - Initialize libcontainerd instance
 	containerdRemote, err := libcontainerd.New(cli.getLibcontainerdRoot(), cli.getPlatformRemoteOptions()...)
 	if err != nil {
 		return err
 	}
 	cli.api = api
-	// Reading: Handle the os.Interrupt, syscall.SIGTERM, syscall.SIGQUIT, syscall.SIGPIPE
+	// Reading: 13 - Handle the os.Interrupt, syscall.SIGTERM, syscall.SIGQUIT, syscall.SIGPIPE
 	signal.Trap(func() {
 		cli.stop()
 		// Reading: stopc will be closed when daemonCli.start() finished.
 		<-stopc // wait for daemonCli.start() to return
 	})
 
-	// Reading:
+	// Reading: 14 - Initialize docker daemon, it does so many things.
 	d, err := daemon.NewDaemon(cli.Config, registryService, containerdRemote)
 	if err != nil {
 		return fmt.Errorf("Error starting daemon: %v", err)
@@ -274,6 +289,9 @@ func (cli *DaemonCli) start() (err error) {
 
 	name, _ := os.Hostname()
 
+	// Reading: 15 - Create docker cluster
+	// NoIdea: Is docker cluster is docker swarm? I have got the information from docker documentation that docker cluster is implemented by docker swarm.
+	// NoIdea: Why not use docker swarm directly, for extensibility?
 	c, err := cluster.New(cluster.Config{
 		Root:                   cli.Config.Root,
 		Name:                   name,
@@ -293,10 +311,13 @@ func (cli *DaemonCli) start() (err error) {
 		"graphdriver": d.GraphDriverName(),
 	}).Info("Docker daemon")
 
+	// Reading: 16 - Initalize middlewares for APIServer.
+	// Reading: This is a graceful implementation. Like filter, interceptor in Java Web. Stratified design.
 	cli.initMiddlewares(api, serverConfig)
 	initRouter(api, d, c)
 
 	cli.d = d
+	// Reading: 17 - Catch SIGHUP signal to reload config file
 	cli.setupConfigReloadTrap()
 
 	// The serve API routine never exits unless an error occurs
@@ -414,6 +435,7 @@ func loadDaemonCliConfig(config *daemon.Config, flags *flag.FlagSet, commonConfi
 func initRouter(s *apiserver.Server, d *daemon.Daemon, c *cluster.Cluster) {
 	decoder := runconfig.ContainerDecoder{}
 
+	// Reading: Each one has it's specific router, classify it
 	routers := []router.Router{
 		container.NewRouter(d, decoder),
 		image.NewRouter(d, decoder),

@@ -31,6 +31,7 @@ func (c *controller) initScopedStore(scope string, scfg *datastore.ScopeCfg) err
 }
 
 func (c *controller) initStores() error {
+	// Reading: 1 - Register key-value store like consul, zookeeper, etc
 	registerKVStores()
 
 	c.Lock()
@@ -42,6 +43,7 @@ func (c *controller) initStores() error {
 	c.stores = nil
 	c.Unlock()
 
+	// Reading: 2 - Initialize data store with scope, scope can be divided to local and global. And it will use local key-value datastore which the data is stored in /var/lib/docker/network/files/local-kv.db if scope is local, or consul/zookeeper if scope is global
 	for scope, scfg := range scopeConfigs {
 		if err := c.initScopedStore(scope, scfg); err != nil {
 			return err

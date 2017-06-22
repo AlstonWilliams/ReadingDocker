@@ -37,6 +37,7 @@ func (clnt *client) deleteContainer(friendlyName string) {
 
 func (clnt *client) getContainer(containerID string) (*container, error) {
 	clnt.mapMutex.RLock()
+	// Reading: client.containers holds on all running containers
 	container, ok := clnt.containers[containerID]
 	defer clnt.mapMutex.RUnlock()
 	if !ok {

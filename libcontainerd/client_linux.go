@@ -303,12 +303,14 @@ func (clnt *client) setExited(containerID string, exitCode uint32) error {
 	clnt.lock(containerID)
 	defer clnt.unlock(containerID)
 
+	// NoIdea: What this one do? Notify daemon container's state has changed?
 	err := clnt.backend.StateChanged(containerID, StateInfo{
 		CommonStateInfo: CommonStateInfo{
 			State:    StateExit,
 			ExitCode: exitCode,
 		}})
 
+	// Reading: Remove the mount point and folder respectively
 	clnt.cleanupOldRootfs(containerID)
 
 	return err
@@ -411,6 +413,7 @@ func (clnt *client) restore(cont *containerd.Container, lastEvent *containerd.Ev
 
 	logrus.Debugf("libcontainerd: restore container %s state %s", cont.Id, cont.Status)
 
+	// Reading: Check whether container is already active
 	containerID := cont.Id
 	if _, err := clnt.getContainer(containerID); err == nil {
 		return fmt.Errorf("container %s is already active", containerID)
@@ -418,14 +421,18 @@ func (clnt *client) restore(cont *containerd.Container, lastEvent *containerd.Ev
 
 	defer func() {
 		if err != nil {
+			// Reading: Delete container if error occurs
 			clnt.deleteContainer(cont.Id)
 		}
 	}()
 
+	// Reading: Initialize a new container instance
 	container := clnt.newContainer(cont.BundlePath, options...)
+	// Reading: Make the pid of init process as the pid of container
 	container.systemPid = systemPid(cont)
 	container.attachStdio = attachStdio
 
+	// Reading: Make the terminal of init process as the terminal of container
 	var terminal bool
 	for _, p := range cont.Processes {
 		if p.Pid == InitFriendlyName {
@@ -433,6 +440,7 @@ func (clnt *client) restore(cont *containerd.Container, lastEvent *containerd.Ev
 		}
 	}
 
+	// Reading: Open stdin, stdout, stderr for container
 	iopipe, err := container.openFifos(terminal)
 	if err != nil {
 		return err
@@ -452,8 +460,10 @@ func (clnt *client) restore(cont *containerd.Container, lastEvent *containerd.Ev
 		return err
 	}
 
+	// Reading: Append container created newly to active container list
 	clnt.appendContainer(container)
 
+	// Reading: Notify dockerd the container's state has changed
 	err = clnt.backend.StateChanged(containerID, StateInfo{
 		CommonStateInfo: CommonStateInfo{
 			State: StateRestore,
@@ -550,16 +560,20 @@ func (clnt *client) Restore(containerID string, attachStdio StdioCallback, optio
 	// processed twice. However, this is not an issue as all those
 	// events will do is change the state of the container to be
 	// exactly the same.
+	// Reading: 1 - Get container from libcontainerd
 	cont, err := clnt.getContainerdContainer(containerID)
 	// Get its last event
+	// Reading: 2 - Get the last event of container in libcontainerd to determine the next operation for container
 	ev, eerr := clnt.getContainerLastEvent(containerID)
 	if err != nil || cont.Status == "Stopped" {
+		// Reading: 3 - Return error if the container can't be found from libcontainerd
 		if err != nil && !strings.Contains(err.Error(), "container not found") {
 			// Legitimate error
 			return err
 		}
 
 		if ev == nil {
+			// Reading: 4 - If last event is null and container is running in containerd, return
 			if _, err := clnt.getContainer(containerID); err == nil {
 				// If ev is nil and the container is running in containerd,
 				// we already consumed all the event of the
@@ -587,6 +601,7 @@ func (clnt *client) Restore(containerID string, attachStdio StdioCallback, optio
 
 	// container is still alive
 	if clnt.liveRestore {
+		// Reading: append alive container to client, create one if container doesn't exist
 		if err := clnt.restore(cont, ev, attachStdio, options...); err != nil {
 			logrus.Errorf("libcontainerd: error restoring %s: %v", containerID, err)
 		}
@@ -594,6 +609,7 @@ func (clnt *client) Restore(containerID string, attachStdio StdioCallback, optio
 	}
 
 	// Kill the container if liveRestore == false
+	// Reading: Create a container by container instance returned by libcontaienrd and kill the original container in client
 	w := clnt.getOrCreateExitNotifier(containerID)
 	clnt.lock(cont.Id)
 	container := clnt.newContainer(cont.BundlePath)

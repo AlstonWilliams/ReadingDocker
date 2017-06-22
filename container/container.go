@@ -142,6 +142,7 @@ func (container *Container) ToDisk() error {
 		return err
 	}
 
+	// Reading: Generate a file writer with temp file
 	jsonSource, err := ioutils.NewAtomicFileWriter(pth, 0666)
 	if err != nil {
 		return err

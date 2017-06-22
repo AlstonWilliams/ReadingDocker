@@ -17,12 +17,15 @@ var (
 )
 
 func (daemon *Daemon) registerName(container *container.Container) error {
+	// Reading: 1 - Throw error if container has been loaded
 	if daemon.Exists(container.ID) {
 		return fmt.Errorf("Container is already loaded")
 	}
+	// Reading: 2 - Verify container id
 	if err := validateID(container.ID); err != nil {
 		return err
 	}
+	// Reading: 3 - Generate container name and save it to disk if container has no name
 	if container.Name == "" {
 		name, err := daemon.generateNewName(container.ID)
 		if err != nil {
@@ -30,6 +33,7 @@ func (daemon *Daemon) registerName(container *container.Container) error {
 		}
 		container.Name = name
 
+		// Reading: Write the container config to /var/lib/docker/containers/container_id/config.v2.json and container's host config to /var/lib/docker/containers/container_id/hostconfig.json
 		if err := container.ToDiskLocking(); err != nil {
 			logrus.Errorf("Error saving container name to disk: %v", err)
 		}

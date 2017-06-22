@@ -153,10 +153,12 @@ func (daemon *Daemon) restore() error {
 	restartContainers := make(map[*container.Container]chan struct{})
 	activeSandboxes := make(map[string]interface{})
 	for _, c := range containers {
+		// Reading: 5 - Generate container name and write container config to disk
 		if err := daemon.registerName(c); err != nil {
 			logrus.Errorf("Failed to register container %s: %s", c.ID, err)
 			continue
 		}
+		// Reading: 6 - Register container to daemon
 		if err := daemon.Register(c); err != nil {
 			logrus.Errorf("Failed to register container %s: %s", c.ID, err)
 			continue
@@ -166,6 +168,7 @@ func (daemon *Daemon) restore() error {
 		// We should rewrite it to use the daemon defaults.
 		// Fixes https://github.com/docker/docker/issues/22536
 		if c.HostConfig.LogConfig.Type == "" {
+			// Reading: 7 - Merge daemon log config to container if container HostConfig's LogConfig's Type is empty
 			if err := daemon.mergeAndVerifyLogConfig(&c.HostConfig.LogConfig); err != nil {
 				logrus.Errorf("Failed to verify log config for container %s: %q", c.ID, err)
 				continue
@@ -178,8 +181,18 @@ func (daemon *Daemon) restore() error {
 		wg.Add(1)
 		go func(c *container.Container) {
 			defer wg.Done()
+			// Reading: 8 - Get the RestartManager associated with container and not reset it
 			rm := c.RestartManager(false)
+			// NoIdea: Container and State are different struct, and I can't find any relation between them except they are in same package. So why Container struct can call method in State struct?
 			if c.IsRunning() || c.IsPaused() {
+
+				// Reading: 9 - Restore container in libcontainerd.
+				/* Reading:
+				 *
+				 *  The container object in daemon just represents the metadata of container.
+				 *  The operations of containers, like creating container, managing the manager, are executed in libcontainerd
+				 *
+				 */
 				if err := daemon.containerd.Restore(c.ID, c.InitializeStdio, libcontainerd.WithRestartManager(rm)); err != nil {
 					logrus.Errorf("Failed to restore %s with containerd: %s", c.ID, err)
 					return
@@ -190,6 +203,7 @@ func (daemon *Daemon) restore() error {
 						logrus.Warnf("Failed build sandbox option to restore container %s: %v", c.ID, err)
 					}
 					mapLock.Lock()
+					// Reading: The activeSandboxes just represents the network config for container
 					activeSandboxes[c.NetworkSettings.SandboxID] = options
 					mapLock.Unlock()
 				}
@@ -661,15 +675,19 @@ func NewDaemon(config *Config, registryService registry.Service, containerdRemot
 	// Reading: 33 - Start GC thread
 	go d.execCommandGC()
 
+	// Reaidng: 34 - containerdRemote.Client(d) returns a new Client instance connected with specific backup. The backup is docker daemon here
+	// Reading: Use this Client to operate container in libcontainerd
 	d.containerd, err = containerdRemote.Client(d)
 	if err != nil {
 		return nil, err
 	}
 
+	// Reading: 35 - Restore the metadata of container and the truly container in libcontainerd
 	if err := d.restore(); err != nil {
 		return nil, err
 	}
 
+	// Reading: 36 - Install the additional plugin, just supported in experimental version
 	// Plugin system initialization should happen before restore. Do not change order.
 	if err := pluginInit(d, config, containerdRemote); err != nil {
 		return nil, err
@@ -1106,6 +1124,7 @@ func isBridgeNetworkDisabled(config *Config) bool {
 	return config.bridgeConfig.Iface == disableNetworkBridge
 }
 
+// Reading: This method is responsible for initialize the config of the whole docker
 func (daemon *Daemon) networkOptions(dconfig *Config, activeSandboxes map[string]interface{}) ([]nwconfig.Option, error) {
 	options := []nwconfig.Option{}
 	if dconfig == nil {

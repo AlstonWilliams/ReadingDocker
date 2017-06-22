@@ -91,13 +91,18 @@ func (daemon *Daemon) load(id string) (*container.Container, error) {
 // Register makes a container object usable by the daemon as <container.ID>
 func (daemon *Daemon) Register(c *container.Container) error {
 	// Attach to stdout and stderr
+
+	// Reading: 1 - Open stdin for container if container has config OpenStdin
 	if c.Config.OpenStdin {
 		c.StreamConfig.NewInputPipes()
 	} else {
 		c.StreamConfig.NewNopInputPipe()
 	}
 
+	// Reading: 2 - Add index of container to daemon.containers
 	daemon.containers.Add(c.ID, c)
+
+	// Reading: 3 - Add short index to idIndex to make daemon search by short prefix
 	daemon.idIndex.Add(c.ID)
 
 	return nil

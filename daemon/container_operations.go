@@ -30,6 +30,7 @@ var (
 	getPortMapInfo    = container.GetSandboxPortMapInfo
 )
 
+// Reading: Initialize network config
 func (daemon *Daemon) buildSandboxOptions(container *container.Container) ([]libnetwork.SandboxOption, error) {
 	var (
 		sboxOptions []libnetwork.SandboxOption
@@ -42,15 +43,20 @@ func (daemon *Daemon) buildSandboxOptions(container *container.Container) ([]lib
 		exposeList  []types.TransportPort
 	)
 
+	// Reading: Load default network name
 	defaultNetName := runconfig.DefaultDaemonNetworkMode().NetworkName()
 	sboxOptions = append(sboxOptions, libnetwork.OptionHostname(container.Config.Hostname),
 		libnetwork.OptionDomainname(container.Config.Domainname))
 
+	// Reading: Config if in host mode
 	if container.HostConfig.NetworkMode.IsHost() {
 		sboxOptions = append(sboxOptions, libnetwork.OptionUseDefaultSandbox())
 		if len(container.HostConfig.ExtraHosts) == 0 {
+			// Reading: Append "/etc/hosts" in hosts to sboxOptions if no ExtraHosts
 			sboxOptions = append(sboxOptions, libnetwork.OptionOriginHostsPath("/etc/hosts"))
 		}
+
+		// Reading: Use "/etc/resolv.conf" in host if no DNSConfig in container or daemon
 		if len(container.HostConfig.DNS) == 0 && len(daemon.configStore.DNS) == 0 &&
 			len(container.HostConfig.DNSSearch) == 0 && len(daemon.configStore.DNSSearch) == 0 &&
 			len(container.HostConfig.DNSOptions) == 0 && len(daemon.configStore.DNSOptions) == 0 {
@@ -62,18 +68,21 @@ func (daemon *Daemon) buildSandboxOptions(container *container.Container) ([]lib
 		sboxOptions = append(sboxOptions, libnetwork.OptionUseExternalKey())
 	}
 
+	// Reading: Get the hosts file in container, it will be /var/lib/docker/containers/061d081a5cfc2d12160252d34dae820a0f1d9e41ca830b55b02440e6e04fe404/hosts if the containerId is 061d081a5cfc2d12160252d34dae820a0f1d9e41ca830b55b02440e6e04fe404
 	container.HostsPath, err = container.GetRootResourcePath("hosts")
 	if err != nil {
 		return nil, err
 	}
 	sboxOptions = append(sboxOptions, libnetwork.OptionHostsPath(container.HostsPath))
 
+	// Reading: Get the resolve.conf file in container, same as hosts file.
 	container.ResolvConfPath, err = container.GetRootResourcePath("resolv.conf")
 	if err != nil {
 		return nil, err
 	}
 	sboxOptions = append(sboxOptions, libnetwork.OptionResolvConfPath(container.ResolvConfPath))
 
+	// Reading: Set dns
 	if len(container.HostConfig.DNS) > 0 {
 		dns = container.HostConfig.DNS
 	} else if len(daemon.configStore.DNS) > 0 {
@@ -104,6 +113,7 @@ func (daemon *Daemon) buildSandboxOptions(container *container.Container) ([]lib
 		sboxOptions = append(sboxOptions, libnetwork.OptionDNSOptions(ds))
 	}
 
+	// Reading: Set the map between the sub domain and secondary ip address
 	if container.NetworkSettings.SecondaryIPAddresses != nil {
 		name := container.Config.Hostname
 		if container.Config.Domainname != "" {
@@ -115,12 +125,14 @@ func (daemon *Daemon) buildSandboxOptions(container *container.Container) ([]lib
 		}
 	}
 
+	// Reading: The ExtraHosts is formated by name:ip
 	for _, extraHost := range container.HostConfig.ExtraHosts {
 		// allow IPv6 addresses in extra hosts; only split on first ":"
 		parts := strings.SplitN(extraHost, ":", 2)
 		sboxOptions = append(sboxOptions, libnetwork.OptionExtraHost(parts[0], parts[1]))
 	}
 
+	// Reading: Map the port in container to port in host
 	if container.HostConfig.PortBindings != nil {
 		for p, b := range container.HostConfig.PortBindings {
 			bindings[p] = []nat.PortBinding{}
@@ -178,6 +190,7 @@ func (daemon *Daemon) buildSandboxOptions(container *container.Container) ([]lib
 	// return if this call to build join options is not for default bridge network
 	// Legacy Link is only supported by docker run --link
 	bridgeSettings, ok := container.NetworkSettings.Networks[defaultNetName]
+	// Reading: If isn't bridge network mode, then return
 	if !ok {
 		return sboxOptions, nil
 	}
@@ -191,8 +204,10 @@ func (daemon *Daemon) buildSandboxOptions(container *container.Container) ([]lib
 		cEndpointID                     string
 	)
 
+	// Reading: Find out the child container
 	children := daemon.children(container)
 	for linkAlias, child := range children {
+		// Reading: If there are bridge network config in child container's Networks config, then  the child is linkable
 		if !isLinkable(child) {
 			return nil, fmt.Errorf("Cannot link to %s, as it does not belong to the default network", child.Name)
 		}
@@ -217,12 +232,14 @@ func (daemon *Daemon) buildSandboxOptions(container *container.Container) ([]lib
 
 		_, alias = path.Split(alias)
 		logrus.Debugf("Update /etc/hosts of %s for alias %s with ip %s", parent.ID, alias, bridgeSettings.IPAddress)
+		// Reading: Update parent's /etc/hosts because parent will connect to child by childs' alias
 		sboxOptions = append(sboxOptions, libnetwork.OptionParentUpdate(
 			parent.ID,
 			alias,
 			bridgeSettings.IPAddress,
 		))
 		if cEndpointID != "" {
+			// NoIdea: Why make parentEndpoints contains container's child container endpoint ID?
 			parentEndpoints = append(parentEndpoints, cEndpointID)
 		}
 	}
